@@ -39,7 +39,7 @@
 
         <header class="mb-8 text-center">
             <h1 class="text-4xl font-bold text-gray-900">HK01 熱門新聞分析報告</h1>
-            <p class="text-lg text-gray-600 mt-2">此報告數據儲存為 CSV 文本格式，方便您直接替換數據區塊。</p>
+            <p class="text-lg text-gray-600 mt-2">此報告數據為內部數據，Top100篇突發新聞，日期為2025/09/14-2025/09/20。(Model Gemini 2.5 Flash)</p>
         </header>
 
         <!-- Key Metrics -->
@@ -62,14 +62,14 @@
         <section class="grid grid-cols-1 lg:grid-cols-5 gap-8 mb-8">
             <div class="lg:col-span-3 bg-white p-6 rounded-xl shadow-md">
                 <h2 class="text-2xl font-bold text-gray-800 mb-4">各地區新聞瀏覽量分佈 (Top 10)</h2>
-                <p class="text-gray-600 mb-4">圖表計算所有 **有「地區」標籤** 的文章。點擊圖表中的地區可篩選下方文章列表。</p>
+                <p class="text-gray-600 mb-4">圖表計算所有有「地區」標籤的文章。點擊圖表中的地區可篩選下方文章列表。</p>
                 <div class="chart-container">
                     <canvas id="locationChart"></canvas>
                 </div>
             </div>
             <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-md">
                 <h2 class="text-2xl font-bold text-gray-800 mb-4">新聞類型瀏覽量佔比</h2>
-                 <p class="text-gray-600 mb-4">圖表計算所有 **有「新聞性質」標籤** 的文章。點擊圖表中的類型可篩選下方文章列表。</p>
+                 <p class="text-gray-600 mb-4">圖表計算所有有「新聞性質」標籤的文章。點擊圖表中的類型可篩選下方文章列表。</p>
                 <div class="chart-container" style="height: 400px;">
                     <canvas id="natureChart"></canvas>
                 </div>
@@ -210,6 +210,7 @@
 突發,港聞,紅磡黃金劫案｜37歲前合夥人主腦落網被暫控盜竊　累計14人被捕,5722,紅磡,劫案
 突發,港聞,文錦渡私家車猛撞中型貨車　女司機爆頭重創　當場死亡,5531,文錦渡,交通意外
 突發,港聞,海關破$1500萬網售冒牌貨案拉7人　檢熱賣野生蟲草　教市民辨真假,5240,None,執法行動
+
 突發,港聞,粉嶺電工觸電亡｜死者沒接電話始被揭暈倒　妻及2年幼子女失依靠,5214,粉嶺,觸電
 `;
     // =================================================================================
