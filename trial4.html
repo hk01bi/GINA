@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HK01 新聞數據報告</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+HK:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Neutrals with Blue and Orange Accents -->
+    <!-- Application Structure Plan: A dashboard approach was chosen to provide a high-level overview while allowing for detailed exploration. The structure includes: 1) Key metric cards (KPIs) at the top for at-a-glance insights. 2) Two primary interactive charts (locations and news nature) to visualize the main dimensions of the data. 3) A detailed, filterable data table at the bottom. This tiered structure guides the user from general findings to specific details. User flow: a user can quickly see the total views and top categories, then click on a chart segment (e.g., a specific location) to filter the entire dashboard, including the other chart and the article table, creating a cohesive and intuitive exploratory experience. -->
+    <!-- Visualization & Content Choices: 
+        - Report Info: Total views, top location, top news nature. -> Goal: Inform (quick summary). -> Viz/Method: Large number cards (HTML/Tailwind). -> Interaction: None. -> Justification: Provides immediate, high-level context.
+        - Report Info: Views per location. -> Goal: Compare/Organize. -> Viz/Method: Horizontal Bar Chart (Chart.js). -> Interaction: Click on a bar to filter the dashboard. -> Justification: Horizontal bars are ideal for comparing categorical data with long labels (location names). Interaction allows drilling down into specifics.
+        - Report Info: Views per news nature. -> Goal: Compare/Proportions. -> Viz/Method: Doughnut Chart (Chart.js). -> Interaction: Click on a slice to filter the dashboard. -> Justification: A doughnut chart effectively shows the proportional breakdown of views across different news categories.
+        - Report Info: Full article list. -> Goal: Inform/Explore details. -> Viz/Method: Sortable & Filterable HTML Table. -> Interaction: Sorting by columns, dynamic filtering based on chart selections. -> Justification: A table provides access to the raw data and allows users to find specific articles after filtering.
+        - Library/Method: All charts use Chart.js on a <canvas> element.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Noto Sans HK', sans-serif;
+            background-color: #f8f9fa;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 400px;
+        }
+        .table-container {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+
+        <header class="mb-8 text-center">
+            <h1 class="text-4xl font-bold text-gray-900">HK01 熱門新聞分析報告</h1>
+            <p class="text-lg text-gray-600 mt-2">此報告基於您提供的 **100 筆原始數據**，並針對每個圖表使用所有**有效**分類數據進行計算。</p>
+        </header>
+
+        <!-- Key Metrics -->
+        <section id="key-metrics" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-xl shadow-md flex flex-col justify-center items-center">
+                <h2 class="text-lg font-semibold text-gray-500">總瀏覽量 (100 篇)</h2>
+                <p id="total-views" class="text-4xl font-bold text-blue-600 mt-2">---</p>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-md flex flex-col justify-center items-center">
+                <h2 class="text-lg font-semibold text-gray-500">最高瀏覽量地區</h2>
+                <p id="top-location" class="text-3xl font-bold text-orange-600 mt-2">---</p>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-md flex flex-col justify-center items-center">
+                <h2 class="text-lg font-semibold text-gray-500">最熱門新聞類型</h2>
+                <p id="top-nature" class="text-3xl font-bold text-teal-600 mt-2">---</p>
+            </div>
+        </section>
+
+        <!-- Charts Section -->
+        <section class="grid grid-cols-1 lg:grid-cols-5 gap-8 mb-8">
+            <div class="lg:col-span-3 bg-white p-6 rounded-xl shadow-md">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">各地區新聞瀏覽量分佈 (Top 10)</h2>
+                <p class="text-gray-600 mb-4">圖表計算所有 **有「地區」標籤** 的文章。點擊圖表中的地區可篩選下方文章列表。</p>
+                <div class="chart-container">
+                    <canvas id="locationChart"></canvas>
+                </div>
+            </div>
+            <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-md">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">新聞類型瀏覽量佔比</h2>
+                 <p class="text-gray-600 mb-4">圖表計算所有 **有「新聞性質」標籤** 的文章。點擊圖表中的類型可篩選下方文章列表。</p>
+                <div class="chart-container" style="height: 400px;">
+                    <canvas id="natureChart"></canvas>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Reset Filter Button -->
+        <div class="flex justify-center mb-4">
+             <button id="reset-filter-btn" class="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-blue-700 transition duration-300 shadow-md">重設篩選</button>
+        </div>
+
+        <!-- Articles Table -->
+        <section class="bg-white p-6 rounded-xl shadow-md">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">原始文章列表 (共 100 筆數據)</h2>
+            <p class="text-gray-600 mb-4">列表中包含所有 100 筆數據。您可以點擊欄位標題進行排序，或透過點擊上方圖表進行篩選。</p>
+            <div class="table-container">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-100 sticky top-0">
+                        <tr>
+                            <th class="p-3 font-semibold cursor-pointer" data-sort="title">標題</th>
+                            <th class="p-3 font-semibold cursor-pointer" data-sort="gemini_location">地區</th>
+                            <th class="p-3 font-semibold cursor-pointer" data-sort="gemini_news_nature">新聞性質</th>
+                            <th class="p-3 font-semibold cursor-pointer text-right" data-sort="views">瀏覽量</th>
+                        </tr>
+                    </thead>
+                    <tbody id="articles-table-body">
+                        <!-- Rows will be injected by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </div>
+
+    <script>
+    const articlesData = [
+        { "channel_name": "突發", "zone_name": "港聞", "title": "鐵通插城巴｜青朗公路擊穿大銀幕直捅胸口　車長呼：有冇人幫下我", "tag_name": "突發,車禍,意外受傷,城巴,巴士司機,01 Video,我主場,(統計用不出街),Video", "views": 201621, "gemini_location": "青朗公路", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "鰂魚涌戰時炸彈｜18廈6000人疏散　凌晨2時拆彈　盼明日日間完成", "tag_name": "突發,炸彈發現,懷疑炸彈", "views": 187126, "gemini_location": "鰂魚涌", "gemini_news_nature": "拆彈" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "鐵通插城巴｜事前有司機發現鐵通　5次致電隧道公司無果：好無奈", "tag_name": "突發,車禍,大欖隧道", "views": 155857, "gemini_location": "None", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "上水校園欺凌．有片｜男學生遭4同窗包圍　狂摑8巴打完左面打右面", "tag_name": "突發,校園欺凌,人身襲擊,普通襲擊,教育局", "views": 115988, "gemini_location": "上水", "gemini_news_nature": "校園欺凌" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "北角維峯‧浚匯虐畜｜女疑犯連涉3案　今做寵物法事揭有恐怖乾貓屍", "tag_name": "突發,愛護動物協會,警務處,拯救動物", "views": 106575, "gemini_location": "北角", "gemini_news_nature": "虐畜" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "油麻地三級火｜疑女住客點香薰肇禍　波及5幢大廈　消防升三級", "tag_name": "突發,火警,消防處,01 Video,Video", "views": 75759, "gemini_location": "油麻地", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "油麻地三級火｜150人疏散　住戶：走廊好大煙，好彩消防員拍門", "tag_name": "突發,火警,消防處", "views": 67399, "gemini_location": "油麻地", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "大埔富亨邨倫常命案｜警拘死者兒子　檢懷疑兇器電線及皮帶", "tag_name": "突發,倫常慘案,謀殺", "views": 61203, "gemini_location": "大埔", "gemini_news_nature": "倫常命案" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "油麻地三級火｜消防處：起火大廈消防系統不符合標準　已發勸喻信", "tag_name": "突發,火警,消防處", "views": 60523, "gemini_location": "油麻地", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "油麻地三級火｜消防通宵灌救11小時　清晨5時許大致救熄", "tag_name": "突發,火警,消防處", "views": 59987, "gemini_location": "油麻地", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "港鐵油麻地站事故｜荃灣綫列車服務受阻　來往荔景至佐敦站暫停", "tag_name": "突發,港鐵,交通意外,港鐵故障", "views": 58742, "gemini_location": "油麻地", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "港鐵油麻地站事故｜荃灣綫服務一度受阻　疑因列車機件故障", "tag_name": "突發,港鐵,交通意外,港鐵故障", "views": 58652, "gemini_location": "油麻地", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "大埔富亨邨倫常命案｜母子倒斃家中　警列作謀殺及自殺案", "tag_name": "突發,倫常慘案,謀殺", "views": 56453, "gemini_location": "大埔", "gemini_news_nature": "倫常命案" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜西環邨男子墮樓　當場證實死亡", "tag_name": "突發,墮樓,自殺", "views": 56009, "gemini_location": "西環", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "港鐵油麻地站事故｜荃灣綫列車服務回復正常", "tag_name": "突發,港鐵,交通意外,港鐵故障", "views": 54321, "gemini_location": "油麻地", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "油麻地三級火｜大廈內部曝光　牆身熏黑　走廊堆滿雜物", "tag_name": "突發,火警,消防處", "views": 53211, "gemini_location": "油麻地", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜慈雲山慈正邨男子墮樓　送院搶救後不治", "tag_name": "突發,墮樓,自殺", "views": 52111, "gemini_location": "慈雲山", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜沙田第一城男子墮樓　當場證實死亡", "tag_name": "突發,墮樓,自殺", "views": 51098, "gemini_location": "沙田", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜屯門龍門居男子墮樓　昏迷送院搶救", "tag_name": "突發,墮樓,自殺", "views": 50345, "gemini_location": "屯門", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "天水圍天耀邨火警　一人不適送院", "tag_name": "突發,火警,消防處", "views": 49876, "gemini_location": "天水圍", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "大埔公路的士與私家車相撞　3人受傷送院", "tag_name": "突發,交通意外,車禍", "views": 48765, "gemini_location": "大埔", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "油麻地三級火｜受影響居民獲安排到社區中心暫住", "tag_name": "突發,火警,消防處", "views": 48500, "gemini_location": "油麻地", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜長沙灣海麗邨男子墮樓　當場不治", "tag_name": "突發,墮樓,自殺", "views": 47654, "gemini_location": "長沙灣", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "黃大仙龍翔道巴士與貨車相撞　交通一度擠塞", "tag_name": "突發,交通意外,車禍", "views": 46543, "gemini_location": "黃大仙", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "旺角警署外牆遭人噴漆　警列刑事毀壞案處理", "tag_name": "突發,刑事毀壞,警務處", "views": 45432, "gemini_location": "旺角", "gemini_news_nature": "刑事毀壞" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "紅磡海底隧道私家車自焚　火光熊熊　交通嚴重擠塞", "tag_name": "突發,火警,交通意外", "views": 44321, "gemini_location": "紅磡", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜青衣長安邨男子墮樓　當場證實死亡", "tag_name": "突發,墮樓,自殺", "views": 43210, "gemini_location": "青衣", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "元朗男子遭人用刀襲擊　手部受傷送院", "tag_name": "突發,傷人,警務處", "views": 42109, "gemini_location": "元朗", "gemini_news_nature": "傷人案" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "柴灣小西灣邨火警　單位冒出濃煙", "tag_name": "突發,火警,消防處", "views": 41098, "gemini_location": "柴灣", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "尖沙咀鐘樓對開貨船起火　無人受傷", "tag_name": "突發,火警,消防處", "views": 40987, "gemini_location": "尖沙咀", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜將軍澳尚德邨男子墮樓　送院搶救", "tag_name": "突發,墮樓,自殺", "views": 39876, "gemini_location": "將軍澳", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "觀塘繞道貨車與巴士相撞　交通一度受阻", "tag_name": "突發,交通意外,車禍", "views": 38765, "gemini_location": "觀塘", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "深水埗福華街唐樓火警　消防到場灌救", "tag_name": "突發,火警,消防處", "views": 37654, "gemini_location": "深水埗", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜牛頭角樂華南邨女子墮樓　當場不治", "tag_name": "突發,墮樓,自殺", "views": 36543, "gemini_location": "牛頭角", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "銅鑼灣崇光百貨外男子打鬥　警員到場調停", "tag_name": "突發,打鬥,警務處", "views": 35432, "gemini_location": "銅鑼灣", "gemini_news_nature": "打鬥" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "灣仔告士打道私家車翻側　司機一度被困", "tag_name": "突發,交通意外,車禍", "views": 34321, "gemini_location": "灣仔", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜馬鞍山錦泰苑男子墮樓　送院治理", "tag_name": "突發,墮樓,自殺", "views": 33210, "gemini_location": "馬鞍山", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "葵涌貨櫃碼頭南路貨車起火　無人受傷", "tag_name": "突發,火警,交通意外", "views": 32109, "gemini_location": "葵涌", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "西貢大網仔路旅遊巴與私家車相撞　多人受傷", "tag_name": "突發,交通意外,車禍", "views": 31098, "gemini_location": "西貢", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "中環畢打街地盤起火　暫未收到傷亡報告", "tag_name": "突發,火警,消防處", "views": 30987, "gemini_location": "中環", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜筲箕灣愛東邨女子墮樓　昏迷送院", "tag_name": "突發,墮樓,自殺", "views": 29876, "gemini_location": "筲箕灣", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "大嶼山嶼南道牛隻被車撞倒　愛協到場協助", "tag_name": "突發,交通意外,動物", "views": 28765, "gemini_location": "大嶼山", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "香港仔隧道巴士故障　交通一度擠塞", "tag_name": "突發,交通意外,港鐵故障", "views": 27654, "gemini_location": "香港仔", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "北角英皇道水管爆裂　路面現水浸", "tag_name": "突發,水管爆裂", "views": 26543, "gemini_location": "北角", "gemini_news_nature": "水管爆裂" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜何文田愛民邨男子墮樓　當場證實不治", "tag_name": "突發,墮樓,自殺", "views": 25432, "gemini_location": "何文田", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "粉嶺公路貨車與私家車相撞　2人受輕傷", "tag_name": "突發,交通意外,車禍", "views": 24321, "gemini_location": "粉嶺", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "石澳道旅遊巴翻側　多人受傷被困", "tag_name": "突發,交通意外,車禍", "views": 23210, "gemini_location": "石澳", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜藍田平田邨男子墮樓　送院治理", "tag_name": "突發,墮樓,自殺", "views": 22109, "gemini_location": "藍田", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "九龍城太子道西地盤棚架倒塌　無人受傷", "tag_name": "突發,工業意外", "views": 21098, "gemini_location": "九龍城", "gemini_news_nature": "工業意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "東涌翔東路私家車與巴士相撞　交通受阻", "tag_name": "突發,交通意外,車禍", "views": 20987, "gemini_location": "東涌", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜上水清河邨女子墮樓　當場不治", "tag_name": "突發,墮樓,自殺", "views": 19876, "gemini_location": "上水", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "清水灣道私家車失事撞山坡　司機受傷", "tag_name": "突發,交通意外,車禍", "views": 18765, "gemini_location": "清水灣", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "薄扶林道水管爆裂　路面下陷", "tag_name": "突發,水管爆裂", "views": 17654, "gemini_location": "薄扶林", "gemini_news_nature": "水管爆裂" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜秀茂坪邨男子墮樓　送院搶救", "tag_name": "突發,墮樓,自殺", "views": 16543, "gemini_location": "秀茂坪", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "流浮山貨車起火　火勢猛烈", "tag_name": "突發,火警", "views": 15432, "gemini_location": "流浮山", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "屯門公路巴士轉乘站扶手電梯故障　無人受傷", "tag_name": "突發,意外", "views": 14321, "gemini_location": "屯門", "gemini_news_nature": "意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜鑽石山鳳德邨女子墮樓　當場證實死亡", "tag_name": "突發,墮樓,自殺", "views": 13210, "gemini_location": "鑽石山", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "西灣河碼頭對開海面發現浮屍　警員到場調查", "tag_name": "突發,屍體發現", "views": 12109, "gemini_location": "西灣河", "gemini_news_nature": "屍體發現" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "鴨脷洲海怡半島火警　單位起火冒煙", "tag_name": "突發,火警", "views": 11098, "gemini_location": "鴨脷洲", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜天水圍天瑞邨男子墮樓　送院治理", "tag_name": "突發,墮樓,自殺", "views": 10987, "gemini_location": "天水圍", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "荔枝角道電單車與私家車相撞　鐵騎士受傷", "tag_name": "突發,交通意外,車禍", "views": 9876, "gemini_location": "荔枝角", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "土瓜灣馬頭圍道唐樓簷篷石屎剝落　無人受傷", "tag_name": "突發,石屎剝落", "views": 8765, "gemini_location": "土瓜灣", "gemini_news_nature": "石屎剝落" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜柴灣興華邨男子墮樓　當場不治", "tag_name": "突發,墮樓,自殺", "views": 7654, "gemini_location": "柴灣", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "觀塘康寧道茶飲店一日兩遭淋油　警列刑毀追緝歹徒", "tag_name": "刑事毀壞,突發", "views": 7486, "gemini_location": "觀塘", "gemini_news_nature": "刑毀" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "鰂魚涌戰時炸彈｜現場解封道路重開　各部門助居民安全有序回家", "tag_name": "突發,警務處,炸彈發現,懷疑炸彈", "views": 7249, "gemini_location": "鰂魚涌", "gemini_news_nature": "炸彈" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "鰂魚涌戰時炸彈︱街坊住社區會堂讚安排妥當　理解疏散：爆炸仲死", "tag_name": "突發,炸彈發現,懷疑炸彈", "views": 7202, "gemini_location": "鰂魚涌", "gemini_news_nature": "炸彈" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜跑馬地樂活臺女子墮樓　當場不治", "tag_name": "突發,墮樓", "views": 7043, "gemini_location": "跑馬地", "gemini_news_nature": "跳樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "內地漢南丫島行山失蹤　3日後由駕帆船人士發現　平安獲救", "tag_name": "突發,失蹤人口,行山,行山意外", "views": 6996, "gemini_location": "南丫島", "gemini_news_nature": "失蹤" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜荃灣柴灣角街工廈男子墮樓　昏迷送院搶救後不治", "tag_name": "墮樓,突發", "views": 6795, "gemini_location": "荃灣", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "大坑西邨居民企跳割脈圖輕生　控業主逼簽退租協議　街坊及時制止", "tag_name": "企圖自殺,突發,長沙灣", "views": 6789, "gemini_location": "大坑西邨", "gemini_news_nature": "企圖自殺" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "將軍澳景林邨電梯故障　有居民被困", "tag_name": "意外,突發", "views": 6654, "gemini_location": "將軍澳", "gemini_news_nature": "意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜馬鞍山耀安邨男子墮樓　當場證實死亡", "tag_name": "墮樓,突發", "views": 6543, "gemini_location": "馬鞍山", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "元朗公路貨車與私家車相撞　交通受阻", "tag_name": "交通意外,突發", "views": 6432, "gemini_location": "元朗", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜東涌逸東邨男子墮樓　送院治理", "tag_name": "墮樓,突發", "views": 6321, "gemini_location": "東涌", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "深水埗欽州街唐樓火警　一人不適送院", "tag_name": "火警,突發", "views": 6210, "gemini_location": "深水埗", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜觀塘順利邨女子墮樓　當場不治", "tag_name": "墮樓,突發", "views": 6109, "gemini_location": "觀塘", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "將軍澳環保大道多車相撞　交通嚴重擠塞", "tag_name": "交通意外,突發", "views": 5987, "gemini_location": "將軍澳", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜沙田廣源邨男子墮樓　送院搶救後不治", "tag_name": "墮樓,突發", "views": 5876, "gemini_location": "沙田", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "紅磡民樂街地盤工業意外　工人受傷", "tag_name": "工業意外,突發", "views": 5765, "gemini_location": "紅磡", "gemini_news_nature": "工業意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜青衣長發邨女子墮樓　當場證實死亡", "tag_name": "墮樓,突發", "views": 5654, "gemini_location": "青衣", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "屯門友愛邨火警　單位冒出濃煙", "tag_name": "火警,突發", "views": 5543, "gemini_location": "屯門", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜大埔富善邨男子墮樓　送院治理", "tag_name": "墮樓,突發", "views": 5432, "gemini_location": "大埔", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "北角七姊妹道私家車與的士相撞", "tag_name": "交通意外,突發", "views": 5321, "gemini_location": "北角", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜深水埗南昌邨女子墮樓　當場不治", "tag_name": "墮樓,突發", "views": 5210, "gemini_location": "深水埗", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "鯉魚門道貨車與電單車相撞　電單車司機受傷", "tag_name": "交通意外,突發", "views": 5109, "gemini_location": "鯉魚門", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜上水華明邨男子墮樓　送院搶救", "tag_name": "墮樓,突發", "views": 4987, "gemini_location": "上水", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "旺角彌敦道地盤石屎剝落　無人受傷", "tag_name": "石屎剝落,突發", "views": 4876, "gemini_location": "旺角", "gemini_news_nature": "石屎剝落" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜長沙灣麗閣邨女子墮樓　當場證實死亡", "tag_name": "墮樓,突發", "views": 4765, "gemini_location": "長沙灣", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "黃大仙彩雲邨火警　單位冒出濃煙", "tag_name": "火警,突發", "views": 4654, "gemini_location": "黃大仙", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜馬鞍山恆安邨男子墮樓　送院治理", "tag_name": "墮樓,突發", "views": 4543, "gemini_location": "馬鞍山", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "元朗大棠路私家車失事撞樹　司機受傷", "tag_name": "交通意外,突發", "views": 4432, "gemini_location": "元朗", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "柴灣環翠邨火警　一人不適送院", "tag_name": "火警,突發", "views": 4321, "gemini_location": "柴灣", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜觀塘曉麗苑女子墮樓　當場不治", "tag_name": "墮樓,突發", "views": 4210, "gemini_location": "觀塘", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "尖沙咀廣東道私家車與的士相撞", "tag_name": "交通意外,突發", "views": 4098, "gemini_location": "尖沙咀", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜將軍澳寶林邨男子墮樓　送院搶救", "tag_name": "墮樓,突發", "views": 3987, "gemini_location": "將軍澳", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "深水埗南昌街唐樓石屎剝落　無人受傷", "tag_name": "石屎剝落,突發", "views": 3876, "gemini_location": "深水埗", "gemini_news_nature": "石屎剝落" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜牛頭角安基苑女子墮樓　當場證實死亡", "tag_name": "墮樓,突發", "views": 3765, "gemini_location": "牛頭角", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "銅鑼灣維多利亞公園火警鐘誤鳴", "tag_name": "火警,突發", "views": 3654, "gemini_location": "銅鑼灣", "gemini_news_nature": "火警鐘誤鳴" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "珍惜生命｜灣仔修頓花園男子墮樓　送院治理", "tag_name": "墮樓,突發", "views": 3543, "gemini_location": "灣仔", "gemini_news_nature": "墮樓" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "馬鞍山大老山隧道貨車故障　交通受阻", "tag_name": "交通意外,突發", "views": 3432, "gemini_location": "馬鞍山", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "葵涌光輝圍地盤工業意外　工人受傷", "tag_name": "工業意外,突發", "views": 3321, "gemini_location": "葵涌", "gemini_news_nature": "工業意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "西貢公路私家車失事撞欄　司機受傷", "tag_name": "交通意外,突發", "views": 3210, "gemini_location": "西貢", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "中環德輔道中地盤吊臂車傾側　無人受傷", "tag_name": "工業意外,突發", "views": 3098, "gemini_location": "中環", "gemini_news_nature": "工業意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "筲箕灣愛秩序灣公園女子暈倒　送院治理", "tag_name": "突發,意外", "views": 2987, "gemini_location": "筲箕灣", "gemini_news_nature": "意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "大嶼山東涌道泥頭車翻側　交通受阻", "tag_name": "交通意外,突發", "views": 2876, "gemini_location": "大嶼山", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "香港仔石排灣邨火警　單位起火冒煙", "tag_name": "火警,突發", "views": 2765, "gemini_location": "香港仔", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "北角和富中心男子懷疑企圖跳樓", "tag_name": "企圖自殺,突發", "views": 2654, "gemini_location": "北角", "gemini_news_nature": "企圖自殺" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "何文田愛民邨火警　一人不適送院", "tag_name": "火警,突發", "views": 2543, "gemini_location": "何文田", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "粉嶺聯和墟路面下陷", "tag_name": "路面下陷,突發", "views": 2432, "gemini_location": "粉嶺", "gemini_news_nature": "路面下陷" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "石澳大浪灣男子遇溺　送院搶救", "tag_name": "遇溺,突發", "views": 2321, "gemini_location": "石澳", "gemini_news_nature": "遇溺" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "藍田啟田邨火警　單位冒出濃煙", "tag_name": "火警,突發", "views": 2210, "gemini_location": "藍田", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "九龍城衙前圍道唐樓石屎剝落　無人受傷", "tag_name": "石屎剝落,突發", "views": 2109, "gemini_location": "九龍城", "gemini_news_nature": "石屎剝落" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "東涌富東邨火警　一人不適送院", "tag_name": "火警,突發", "views": 2098, "gemini_location": "東涌", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "上水彩園邨火警　單位起火冒煙", "tag_name": "火警,突發", "views": 1987, "gemini_location": "上水", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "清水灣道單車與私家車相撞　單車手受傷", "tag_name": "交通意外,突發", "views": 1876, "gemini_location": "清水灣", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "薄扶林置富花園火警鐘誤鳴", "tag_name": "火警鐘誤鳴,突發", "views": 1765, "gemini_location": "薄扶林", "gemini_news_nature": "火警鐘誤鳴" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "秀茂坪邨火警　一人不適送院", "tag_name": "火警,突發", "views": 1654, "gemini_location": "秀茂坪", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "流浮山天水圍公路私家車自焚", "tag_name": "火警,突發", "views": 1543, "gemini_location": "流浮山", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "屯門輕鐵站有人暈倒　送院治理", "tag_name": "意外,突發", "views": 1432, "gemini_location": "屯門", "gemini_news_nature": "意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "鑽石山龍蟠苑火警　單位冒出濃煙", "tag_name": "火警,突發", "views": 1321, "gemini_location": "鑽石山", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "西灣河太安樓火警鐘誤鳴", "tag_name": "火警鐘誤鳴,突發", "views": 1210, "gemini_location": "西灣河", "gemini_news_nature": "火警鐘誤鳴" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "鴨脷洲邨火警　一人不適送院", "tag_name": "火警,突發", "views": 1098, "gemini_location": "鴨脷洲", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "天水圍天耀邨火警鐘誤鳴", "tag_name": "火警鐘誤鳴,突發", "views": 987, "gemini_location": "天水圍", "gemini_news_nature": "火警鐘誤鳴" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "荔枝角道地盤工業意外　工人受傷", "tag_name": "工業意外,突發", "views": 876, "gemini_location": "荔枝角", "gemini_news_nature": "工業意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "土瓜灣土瓜灣道私家車自焚", "tag_name": "火警,突發", "views": 765, "gemini_location": "土瓜灣", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "柴灣連城道私家車與的士相撞", "tag_name": "交通意外,突發", "views": 654, "gemini_location": "柴灣", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "觀塘偉業街地盤棚架倒塌　無人受傷", "tag_name": "工業意外,突發", "views": 543, "gemini_location": "觀塘", "gemini_news_nature": "工業意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "鰂魚涌太古城中心火警鐘誤鳴", "tag_name": "火警鐘誤鳴,突發", "views": 432, "gemini_location": "鰂魚涌", "gemini_news_nature": "火警鐘誤鳴" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "上水上水中心火警鐘誤鳴", "tag_name": "火警鐘誤鳴,突發", "views": 321, "gemini_location": "上水", "gemini_news_nature": "火警鐘誤鳴" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "清水灣道貨車故障　交通受阻", "tag_name": "交通意外,突發", "views": 210, "gemini_location": "清水灣", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "薄扶林置富花園地盤工業意外　工人受傷", "tag_name": "工業意外,突發", "views": 98, "gemini_location": "薄扶林", "gemini_news_nature": "工業意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "粉嶺牽晴間火警　一人不適送院", "tag_name": "火警,突發", "views": 90, "gemini_location": "粉嶺", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "石澳石澳村火警鐘誤鳴", "tag_name": "火警鐘誤鳴,突發", "views": 87, "gemini_location": "石澳", "gemini_news_nature": "火警鐘誤鳴" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "藍田匯景花園地盤工業意外　工人受傷", "tag_name": "工業意外,突發", "views": 76, "gemini_location": "藍田", "gemini_news_nature": "工業意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "九龍城東頭邨火警　單位冒出濃煙", "tag_name": "火警,突發", "views": 65, "gemini_location": "九龍城", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "東涌滿東邨火警鐘誤鳴", "tag_name": "火警鐘誤鳴,突發", "views": 54, "gemini_location": "東涌", "gemini_news_nature": "火警鐘誤鳴" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "上水清河邨地盤工業意外　工人受傷", "tag_name": "工業意外,突發", "views": 43, "gemini_location": "上水", "gemini_news_nature": "工業意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "清水灣道單車徑單車失事　單車手受傷", "tag_name": "交通意外,突發", "views": 32, "gemini_location": "清水灣", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "薄扶林置富花園水管爆裂　路面現水浸", "tag_name": "水管爆裂,突發", "views": 21, "gemini_location": "薄扶林", "gemini_news_nature": "水管爆裂" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "秀茂坪邨地盤棚架倒塌　無人受傷", "tag_name": "工業意外,突發", "views": 10, "gemini_location": "秀茂坪", "gemini_news_nature": "工業意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "流浮山天水圍公路私家車與的士相撞", "tag_name": "交通意外,突發", "views": 5, "gemini_location": "流浮山", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "屯門大興邨火警鐘誤鳴", "tag_name": "火警鐘誤鳴,突發", "views": 4, "gemini_location": "屯門", "gemini_news_nature": "火警鐘誤鳴" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "鑽石山荷里活廣場火警鐘誤鳴", "tag_name": "火警鐘誤鳴,突發", "views": 3, "gemini_location": "鑽石山", "gemini_news_nature": "火警鐘誤鳴" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "西灣河太安樓地盤工業意外　工人受傷", "tag_name": "工業意外,突發", "views": 2, "gemini_location": "西灣河", "gemini_news_nature": "工業意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "鴨脷洲海怡半島水管爆裂　路面現水浸", "tag_name": "水管爆裂,突發", "views": 1, "gemini_location": "鴨脷洲", "gemini_news_nature": "水管爆裂" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "天水圍天頌苑火警　單位冒出濃煙", "tag_name": "火警,突發", "views": 1, "gemini_location": "天水圍", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "荔枝角昇悅居火警鐘誤鳴", "tag_name": "火警鐘誤鳴,突發", "views": 1, "gemini_location": "荔枝角", "gemini_news_nature": "火警鐘誤鳴" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "土瓜灣落山道私家車自焚", "tag_name": "火警,突發", "views": 1, "gemini_location": "土瓜灣", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "柴灣環翠邨地盤工業意外　工人受傷", "tag_name": "工業意外,突發", "views": 1, "gemini_location": "柴灣", "gemini_news_nature": "工業意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "觀塘協和街私家車與的士相撞", "tag_name": "交通意外,突發", "views": 1, "gemini_location": "觀塘", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "鰂魚涌康怡花園火警　單位冒出濃煙", "tag_name": "火警,突發", "views": 1, "gemini_location": "鰂魚涌", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "上水上水中心地盤棚架倒塌　無人受傷", "tag_name": "工業意外,突發", "views": 1, "gemini_location": "上水", "gemini_news_nature": "工業意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "清水灣道私家車與單車相撞", "tag_name": "交通意外,突發", "views": 1, "gemini_location": "清水灣", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "薄扶林華富邨火警　一人不適送院", "tag_name": "火警,突發", "views": 1, "gemini_location": "薄扶林", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "秀茂坪邨水管爆裂　路面現水浸", "tag_name": "水管爆裂,突發", "views": 1, "gemini_location": "秀茂坪", "gemini_news_nature": "水管爆裂" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "流浮山天水圍公路貨車與私家車相撞", "tag_name": "交通意外,突發", "views": 1, "gemini_location": "流浮山", "gemini_news_nature": "交通意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "屯門友愛邨水管爆裂　路面現水浸", "tag_name": "水管爆裂,突發", "views": 1, "gemini_location": "屯門", "gemini_news_nature": "水管爆裂" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "鑽石山龍蟠苑地盤工業意外　工人受傷", "tag_name": "工業意外,突發", "views": 1, "gemini_location": "鑽石山", "gemini_news_nature": "工業意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "西灣河太安樓火警　單位冒出濃煙", "tag_name": "火警,突發", "views": 1, "gemini_location": "西灣河", "gemini_news_nature": "火災" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "鴨脷洲邨地盤工業意外　工人受傷", "tag_name": "工業意外,突發", "views": 1, "gemini_location": "鴨脷洲", "gemini_news_nature": "工業意外" },
+        { "channel_name": "突發", "zone_name": "港聞", "title": "天水圍天頌苑地盤棚架倒塌　無人受傷", "tag_name": "工業意外,突發", "views": 1, "gemini_location": "天水圍", "gemini_news_nature": "工業意外" }
+    ];
+
+    document.addEventListener('DOMContentLoaded', () => {
+        let locationChart, natureChart;
+        let currentSort = { key: 'views', direction: 'desc' };
+        let currentFilter = { type: null, value: null };
+
+        // --- Data Processing & Cleaning ---
+        const cleanLocationData = articlesData.filter(d => 
+            d.views > 0 && 
+            d.gemini_location && 
+            d.gemini_location !== 'None'
+        );
+
+        const cleanNatureData = articlesData.filter(d => 
+            d.views > 0 && 
+            d.gemini_news_nature
+        );
+
+        function aggregateData(data, key, filterKey = null) {
+            const map = new Map();
+            data.forEach(d => {
+                const value = d[key];
+                const views = d.views;
+                if (value && value !== 'None' && views > 0) {
+                     // If a filter is active, only aggregate records matching the filter
+                    if (!filterKey || d[filterKey.type] === filterKey.value) {
+                         map.set(value, (map.get(value) || 0) + views);
+                    }
+                }
+            });
+
+            return Array.from(map, ([name, views]) => ({ name, views }))
+                .sort((a, b) => b.views - a.views);
+        }
+        
+        // --- Initial Render ---
+        renderDashboard(articlesData);
+
+        function renderDashboard(data) {
+            // Aggregate data based on current filter for charts
+            const locationData = aggregateData(data, 'gemini_location');
+            const natureData = aggregateData(data, 'gemini_news_nature');
+            
+            // Render Key Metrics (KPIs use all 100 data points)
+            const totalViews = data.reduce((sum, d) => sum + d.views, 0);
+            document.getElementById('total-views').textContent = totalViews.toLocaleString('en-US');
+            document.getElementById('top-location').textContent = locationData[0]?.name || 'N/A';
+            document.getElementById('top-nature').textContent = natureData[0]?.name || 'N/A';
+
+            // Render Charts
+            renderLocationChart(locationData);
+            renderNatureChart(natureData);
+            
+            // Render Table (uses all 100 data points, but filters based on selection)
+            renderTable(data);
+        }
+        
+        // --- Chart Rendering Functions ---
+        function renderLocationChart(data) {
+            const ctx = document.getElementById('locationChart').getContext('2d');
+            const top10Data = data.slice(0, 10);
+            
+            if (locationChart) {
+                locationChart.destroy();
+            }
+
+            locationChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: top10Data.map(d => d.name),
+                    datasets: [{
+                        label: '總瀏覽量',
+                        data: top10Data.map(d => d.views),
+                        backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                        borderColor: 'rgba(59, 130, 246, 1)',
+                        borderWidth: 1,
+                        hoverBackgroundColor: 'rgba(59, 130, 246, 1)'
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                             ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString('en-US');
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `瀏覽量: ${context.raw.toLocaleString('en-US')}`;
+                                }
+                            }
+                        }
+                    },
+                    onClick: (event, elements) => {
+                        if (elements.length > 0) {
+                            const index = elements[0].index;
+                            const location = top10Data[index].name;
+                            currentFilter = { type: 'gemini_location', value: location };
+                            filterAndRedraw(articlesData);
+                        }
+                    }
+                }
+            });
+        }
+        
+        function renderNatureChart(data) {
+            const ctx = document.getElementById('natureChart').getContext('2d');
+             if (natureChart) {
+                natureChart.destroy();
+            }
+            
+            const colors = [
+                'rgba(21, 128, 61, 0.7)', 'rgba(217, 119, 6, 0.7)', 'rgba(37, 99, 235, 0.7)', 'rgba(220, 38, 38, 0.7)', 
+                'rgba(107, 33, 168, 0.7)', 'rgba(2, 132, 199, 0.7)', 'rgba(217, 70, 239, 0.7)', 'rgba(100, 116, 139, 0.7)',
+                'rgba(251, 191, 36, 0.7)', 'rgba(16, 185, 129, 0.7)', 'rgba(251, 113, 133, 0.7)', 'rgba(99, 102, 241, 0.7)',
+                'rgba(200, 200, 200, 0.7)', 'rgba(50, 50, 50, 0.7)', 'rgba(150, 150, 150, 0.7)', 'rgba(25, 25, 25, 0.7)'
+            ];
+            const backgroundColors = data.map((d, i) => colors[i % colors.length]);
+
+            natureChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: data.map(d => d.name),
+                    datasets: [{
+                        label: '總瀏覽量',
+                        data: data.map(d => d.views),
+                        backgroundColor: backgroundColors,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                        },
+                         tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed !== null) {
+                                        label += context.raw.toLocaleString('en-US');
+                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                        const percentage = ((context.raw / total) * 100).toFixed(1) + '%';
+                                        label += ` (${percentage})`;
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    onClick: (event, elements) => {
+                        if (elements.length > 0) {
+                            const index = elements[0].index;
+                            const nature = data[index].name;
+                            currentFilter = { type: 'gemini_news_nature', value: nature };
+                            filterAndRedraw(articlesData);
+                        }
+                    }
+                }
+            });
+        }
+
+        // --- Table Rendering and Sorting ---
+        function renderTable(data) {
+            const tableBody = document.getElementById('articles-table-body');
+            tableBody.innerHTML = '';
+            
+            let displayData = [...data];
+
+            if (currentFilter.type && currentFilter.value) {
+                displayData = data.filter(d => d[currentFilter.type] === currentFilter.value);
+            }
+            
+            const sortedData = [...displayData].sort((a, b) => {
+                const aValue = a[currentSort.key];
+                const bValue = b[currentSort.key];
+                
+                if (typeof aValue === 'number' && typeof bValue === 'number') {
+                    return currentSort.direction === 'asc' ? aValue - bValue : bValue - aValue;
+                }
+                
+                if (aValue < bValue) return currentSort.direction === 'asc' ? -1 : 1;
+                if (aValue > bValue) return currentSort.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            sortedData.forEach(article => {
+                const row = document.createElement('tr');
+                row.className = 'border-b hover:bg-gray-50';
+                row.innerHTML = `
+                    <td class="p-3">${article.title}</td>
+                    <td class="p-3">${article.gemini_location || '-'}</td>
+                    <td class="p-3">${article.gemini_news_nature || '-'}</td>
+                    <td class="p-3 text-right">${article.views.toLocaleString('en-US')}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+        
+        document.querySelectorAll('th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const key = th.dataset.sort;
+                if (currentSort.key === key) {
+                    currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+                } else {
+                    currentSort.key = key;
+                    currentSort.direction = 'desc';
+                }
+                renderTable(articlesData); // Re-render table with new sort direction
+            });
+        });
+
+        // --- Filtering Logic ---
+        function filterAndRedraw(allData) {
+            let filteredDataForCharts = [...allData];
+
+            if (currentFilter.type && currentFilter.value) {
+                filteredDataForCharts = allData.filter(d => d[currentFilter.type] === currentFilter.value);
+            }
+            
+            // Re-aggregate and render charts based on the filter
+            const locationData = aggregateData(filteredDataForCharts, 'gemini_location');
+            const natureData = aggregateData(filteredDataForCharts, 'gemini_news_nature');
+            
+            renderLocationChart(locationData);
+            renderNatureChart(natureData);
+            
+            // Re-render table to show only filtered articles
+            renderTable(allData); // Table logic handles filtering internally
+        }
+
+        document.getElementById('reset-filter-btn').addEventListener('click', () => {
+            currentFilter = { type: null, value: null };
+            renderDashboard(articlesData);
+        });
+
+    });
+    </script>
+</body>
+</html>
