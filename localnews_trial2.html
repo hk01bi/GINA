@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HK01 新聞數據報告</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+HK:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Neutrals with Blue and Orange Accents -->
+    <!-- Application Structure Plan: A dashboard approach was chosen to provide a high-level overview while allowing for detailed exploration. The structure includes: 1) Key metric cards (KPIs) at the top for at-a-glance insights. 2) Two primary interactive charts (locations and news nature) to visualize the main dimensions of the data. 3) A detailed, filterable data table at the bottom. This tiered structure guides the user from general findings to specific details. User flow: a user can quickly see the total views and top categories, then click on a chart segment (e.g., a specific location) to filter the entire dashboard, including the other chart and the article table, creating a cohesive and intuitive exploratory experience. -->
+    <!-- Visualization & Content Choices: 
+        - Report Info: Total views, top location, top news nature. -> Goal: Inform (quick summary). -> Viz/Method: Large number cards (HTML/Tailwind). -> Interaction: None. -> Justification: Provides immediate, high-level context.
+        - Report Info: Views per location. -> Goal: Compare/Organize. -> Viz/Method: Horizontal Bar Chart (Chart.js). -> Interaction: Click on a bar to filter the dashboard. -> Justification: Horizontal bars are ideal for comparing categorical data with long labels (location names). Interaction allows drilling down into specifics.
+        - Report Info: Views per news nature. -> Goal: Compare/Proportions. -> Viz/Method: Doughnut Chart (Chart.js). -> Interaction: Click on a slice to filter the dashboard. -> Justification: A doughnut chart effectively shows the proportional breakdown of views across different news categories.
+        - Report Info: Full article list. -> Goal: Inform/Explore details. -> Viz/Method: Sortable & Filterable HTML Table. -> Interaction: Sorting by columns, dynamic filtering based on chart selections. -> Justification: A table provides access to the raw data and allows users to find specific articles after filtering.
+        - Library/Method: All charts use Chart.js on a <canvas> element.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Noto Sans HK', sans-serif;
+            background-color: #f8f9fa;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 400px;
+        }
+        .table-container {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+
+        <header class="mb-8 text-center">
+            <h1 class="text-4xl font-bold text-gray-900">HK01 熱門新聞分析報告</h1>
+            <p class="text-lg text-gray-600 mt-2">此報告數據儲存為 CSV 文本格式，方便您直接替換數據區塊。</p>
+        </header>
+
+        <!-- Key Metrics -->
+        <section id="key-metrics" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-xl shadow-md flex flex-col justify-center items-center">
+                <h2 class="text-lg font-semibold text-gray-500">總瀏覽量</h2>
+                <p id="total-views" class="text-4xl font-bold text-blue-600 mt-2">---</p>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-md flex flex-col justify-center items-center">
+                <h2 class="text-lg font-semibold text-gray-500">最高瀏覽量地區</h2>
+                <p id="top-location" class="text-3xl font-bold text-orange-600 mt-2">---</p>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-md flex flex-col justify-center items-center">
+                <h2 class="text-lg font-semibold text-gray-500">最熱門新聞類型</h2>
+                <p id="top-nature" class="text-3xl font-bold text-teal-600 mt-2">---</p>
+            </div>
+        </section>
+
+        <!-- Charts Section -->
+        <section class="grid grid-cols-1 lg:grid-cols-5 gap-8 mb-8">
+            <div class="lg:col-span-3 bg-white p-6 rounded-xl shadow-md">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">各地區新聞瀏覽量分佈 (Top 10)</h2>
+                <p class="text-gray-600 mb-4">圖表計算所有 **有「地區」標籤** 的文章。點擊圖表中的地區可篩選下方文章列表。</p>
+                <div class="chart-container">
+                    <canvas id="locationChart"></canvas>
+                </div>
+            </div>
+            <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-md">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">新聞類型瀏覽量佔比</h2>
+                 <p class="text-gray-600 mb-4">圖表計算所有 **有「新聞性質」標籤** 的文章。點擊圖表中的類型可篩選下方文章列表。</p>
+                <div class="chart-container" style="height: 400px;">
+                    <canvas id="natureChart"></canvas>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Reset Filter Button -->
+        <div class="flex justify-center mb-4">
+             <button id="reset-filter-btn" class="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-blue-700 transition duration-300 shadow-md">重設篩選</button>
+        </div>
+
+        <!-- Articles Table -->
+        <section class="bg-white p-6 rounded-xl shadow-md">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">文章列表</h2>
+            <p class="text-gray-600 mb-4">列表中包含所有數據。您可以點擊欄位標題進行排序，或透過點擊上方圖表進行篩選。</p>
+            <div class="table-container">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-100 sticky top-0">
+                        <tr>
+                            <th class="p-3 font-semibold cursor-pointer" data-sort="title">標題</th>
+                            <th class="p-3 font-semibold cursor-pointer" data-sort="gemini_location">地區</th>
+                            <th class="p-3 font-semibold cursor-pointer" data-sort="gemini_news_nature">新聞性質</th>
+                            <th class="p-3 font-semibold cursor-pointer text-right" data-sort="views">瀏覽量</th>
+                        </tr>
+                    </thead>
+                    <tbody id="articles-table-body">
+                        <!-- Rows will be injected by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </div>
+
+    <script>
+    // =================================================================================
+    // IMPORTANT: 請手動更新此處的 csvData 變數內容來替換您的新數據。
+    // 格式必須是標準 CSV： channel_name,zone_name,title,views,gemini_location,gemini_news_nature
+    // 確保標題和內容不包含未被引號包裹的逗號或換行符。
+    // =================================================================================
+    const csvData = `channel_name,zone_name,title,views,gemini_location,gemini_news_nature
+突發,港聞,鐵通插城巴｜青朗公路擊穿大銀幕直捅胸口　車長呼：有冇人幫下我,201621,青朗公路,交通意外
+突發,港聞,鰂魚涌戰時炸彈｜18廈6000人疏散　凌晨2時拆彈　盼明日日間完成,187126,鰂魚涌,拆彈
+突發,港聞,鐵通插城巴｜事前有司機發現鐵通　5次致電隧道公司無果：好無奈,155857,None,交通意外
+突發,港聞,上水校園欺凌．有片｜男學生遭4同窗包圍　狂摑8巴打完左面打右面,115988,上水,校園欺凌
+突發,港聞,北角維峯‧浚匯虐畜｜女疑犯連涉3案　今做寵物法事揭有恐怖乾貓屍,106558,北角,虐畜
+突發,港聞,鰂魚涌濱海街地盤發現疑戰時炸彈　多人疏散　包括太古坊二座,93256,鰂魚涌,炸彈發現
+突發,港聞,鰂魚涌戰時炸彈．直擊拆彈︱點燃炸藥火勢猛烈　帳篷沙包燒成灰燼,90130,鰂魚涌,拆彈
+突發,港聞,華豐大廈爭女斬人片曝光︱兩男持刀摺櫈混戰浴血　女子到場勸交,85125,佐敦,傷人
+突發,港聞,上水校園欺凌｜4男女學生涉襲擊被捕　15歲男生曾遭索款近萬元,80208,上水,罪案
+突發,港聞,鰂魚涌戰時炸彈｜美軍ANM65藏500磅炸藥　威力與80年前近乎一樣,79101,鰂魚涌,炸彈
+突發,港聞,代購網兩港人店主東大門遇襲　兇徒操廣東話恐嚇　懸紅50萬緝主謀,76965,None,襲擊
+突發,港聞,警一周接8宗YouTube Premium續訂詐騙案涉$87萬　大學生被呃$40萬,70762,None,詐騙案
+突發,港聞,觀塘繞道兩司機撞車疑落地理論　的士從後直撞　的士司機送院亡,68628,觀塘,交通意外
+突發,港聞,觀塘道車禍｜27歲新婚鐵騎士遭輾斃　58歲九巴車長涉危駕致死被捕,68139,觀塘,交通意外
+突發,港聞,觀塘道電單車與巴士相撞　鐵騎士遭尾隨另一巴士輾過　送院不治,66808,觀塘,交通意外
+突發,港聞,藍田惠康中年婦疑偷西蘭花雞蛋等食物　人贓並獲遭數職員反手捉住,60620,藍田,盜竊
+突發,港聞,紅磡打金工場劫案｜群漢掠$5900萬金條金磚　趕走在場者鎖門離去,58870,紅磡,劫案
+突發,港聞,鰂魚涌戰時炸彈｜女住戶疑遺漏物件　返家遇阻不適　人貓齊送院,51611,鰂魚涌,炸彈發現
+突發,港聞,鰂魚涌炸彈拆彈．交通消息｜電車服務恢復　鰂魚涌站A、B出口重開,45770,鰂魚涌,炸彈拆彈
+突發,港聞,鰂魚涌戰時炸彈｜警著住戶攜寵撤離　議員指通宵拆彈料影響1880戶,45320,鰂魚涌,炸彈
+突發,港聞,天水圍俊宏軒7人毆鬥　1男昏迷送院　與另2人同被捕,36370,天水圍,毆鬥
+突發,港聞,紅磡黃金劫案｜重案組暫拘7男女起回$5900萬黃金　女子涉助夫潛逃,35199,紅磡,劫案
+突發,港聞,鰂魚涌戰時炸彈｜消息:警已鋸開炸彈外殼燒毁炸藥　預今午2時完成,34803,鰂魚涌,炸彈
+突發,港聞,調景嶺碼頭六旬漢疑扒龍舟後暈倒　昏迷送院搶救後不治,34108,調景嶺,猝死
+突發,港聞,尖沙咀五旬男夜總會唱K昏迷　妻子報案惜太遲　送院不治,33242,尖沙咀,猝死
+突發,港聞,鐵通插城巴｜屢有異物擊穿大銀幕傷人　2016年退休警遭花崗岩擊斃,32731,None,意外
+突發,港聞,牛頭角玉蓮臺七旬婦遭箍頸搶金鏈　兒子聞救命聲衝出走廊撳低疑犯,31937,牛頭角,搶劫
+突發,港聞,粉嶺電工觸電亡｜遺孀寢食難安　子女哭醒憶父　工權會籲伸援手,30451,粉嶺,觸電
+突發,港聞,有片｜荃灣城門道車房陷火海傳爆炸聲　大量濃煙席捲半空,29684,荃灣,火警
+突發,港聞,鰂魚涌戰時炸彈｜2018年沙中線地盤現同類型炸彈　花20小時拆彈,28769,鰂魚涌,炸彈
+突發,港聞,鐵通插城巴｜警拘涉案貨車司機　揭鐵通插巴士前曾擊中私家車,28369,None,交通意外
+突發,港聞,鐵通插城巴｜熟客讚車長表現　城巴深表敬佩：危急關頭展敬業精神,28139,None,交通意外
+突發,港聞,有片｜油麻地男子涉襲擊女友被捕　激動掙扎　被衝鋒警騎身上制服,27770,油麻地,襲擊案
+突發,港聞,北角維峯‧浚匯虐畜｜上周檢狗屍今再現貓屍　女主人保釋後再被捕,27231,北角,虐畜
+突發,港聞,元朗錫降村夫婦「吵大鑊」　男子持刀挾持5月大女兒反鎖屋內3小時,26598,元朗,挾持人質
+突發,港聞,鰂魚涌戰時炸彈｜9小時完成拆彈　惡劣天氣致處理時間較預期長,25896,鰂魚涌,發現炸彈
+突發,港聞,華豐大廈兩男疑爭女　一男持刀斬傷情敵逃去　警趕至洗樓大搜捕,25492,尖沙咀,傷人
+突發,港聞,車CAM｜屯公私家車突切線　連撞兩車打觔斗撞壆反彈　兩人送院,25359,屯門,交通意外
+突發,港聞,有片｜Amigo電動的士猛撼尖沙咀麵店撞散枱凳　食客嚇到「彈起」,25352,尖沙咀,交通意外
+突發,港聞,馬鞍山西沙路中五女生捱小巴撞　一度陷昏迷　送院搶救,25056,馬鞍山,交通意外
+突發,港聞,有片｜觀塘藏毒男衝上的士惹懷疑　鐵騎士聯警制服　1警手傷送院,25056,觀塘,藏毒
+突發,港聞,鐵通插城巴｜車長出院報平安　錄音謝妻子各界：一樣會為大眾服務,23825,None,交通意外
+突發,港聞,有片｜深水埗三英大廈單位陷火海　消防升雲梯射水救熄,23636,深水埗,火警
+突發,港聞,紅磡$5900萬黃金劫案｜消息：警拘7人　工場前合夥人在逃疑為主腦,22378,紅磡,劫案
+突發,港聞,尖沙咀的士撞麵店｜30多年從未遇同類意外　女東主：梗係驚啦！,21555,尖沙咀,交通意外
+突發,港聞,天平邨天明樓停電｜走廊變充電站　居民酷熱難耐：今晚唔知點過,20249,上水,停電
+突發,港聞,有片｜屯門公路轉車站九巴冒煙　休班警持滅火筒衝近撲救,20062,屯門,火警
+突發,港聞,富昌邨男童連環掟雜物落街　警帶走送院　六旬祖母涉疏忽照顧被捕,19945,深水埗,虐兒
+突發,港聞,鰂魚涌戰時炸彈｜大撤離長者不適送院　居民攜寵：淨係執嘢畀隻狗,19781,鰂魚涌,炸彈
+突發,港聞,鐵通插城巴｜熱線打5次無人聽　大欖隧道：轉駁機制失靈已修復,19328,大欖隧道,交通意外
+突發,港聞,九龍醫院女病人覆診期間亮刀片　4護士受傷　涉傷人等3罪被捕,19070,何文田,傷人
+突發,港聞,假月餅出沒｜海關檢冒牌美心流心奶黃月餅拘2人　4大破綻辨真偽,18763,None,冒牌貨
+突發,港聞,鰂魚涌戰時炸彈｜凌晨擴大圍封範圍　內街商戶幾乎全落閘如死城,18674,鰂魚涌,炸彈
+突發,港聞,有片｜元朗上攸田村鐵皮狗場火警　檢24貓狗屍　另逾30狗生還,17506,元朗,火警
+突發,港聞,鰂魚涌戰時炸彈｜現場已撤離　將擴大圍封範圍　展開炸彈切割程序,15636,鰂魚涌,炸彈
+突發,港聞,紅磡啟岸24歲女情海翻波　激動掟玻璃樽落街被捕　碎片濺傷老婦,15447,紅磡,高空墮物
+突發,港聞,鐵通插城巴｜鐵通疑留路面句鐘未清理　先後擊中私家車及城巴,14786,None,交通意外
+突發,港聞,觀塘道奪命車禍｜27歲鐵騎士新婚一個月　來港定居任外賣員,14687,觀塘,交通意外
+突發,港聞,鰂魚涌戰時炸彈︱封路影響市民返工放工　食肆東主：生意少咗一半,14664,鰂魚涌,炸彈發現
+突發,港聞,鰂魚涌戰時炸彈｜鄧炳強、周一鳴、楊恩健視察　當局設15庇護中心,14176,鰂魚涌,炸彈
+突發,港聞,紅磡鶴園東街打金工場　遭10人闖入搶劫　擸走金粉,13939,紅磡,搶劫
+突發,港聞,鰂魚涌戰時炸彈｜公共交通明日或受影響　運輸署籲出行前留意安排,13914,鰂魚涌,炸彈發現
+突發,港聞,屯門公路九巴冒煙｜休班「士沙」助救火疏散乘客　警：展專業本色,12869,屯門,火警
+突發,港聞,觀塘道車禍｜九巴指電單車疑切線碰到巴士失平衡　暫停兩車長職務,12629,觀塘,車禍
+突發,港聞,紅磡黃金劫案內情｜前合夥人眼紅公司成功　聯黑幫奪金　13人落網,12218,紅磡,劫案
+突發,港聞,車cam直擊｜大埔凌志疑越線撞小巴　小巴撞到同越線停車,11945,大埔,交通意外
+突發,港聞,紅磡Tesla遇警截搜出毒品　穿拖鞋司機逃跑失手　涉毒駕被捕,11791,紅磡,毒品案
+突發,港聞,九龍灣婦遇警截查　揭手拉車及環保袋內藏$3000銅電線銅喉被捕,11425,Kowloon Bay,盜竊
+突發,港聞,有汗出無糧出︱火炭豐景花園工人追薪危坐天台　消防一度開氣墊,11323,火炭,企跳
+突發,港聞,珍惜生命│將軍澳跨灣大橋男子跳橋失蹤　救援人員海陸空搜索,10914,將軍澳,墮海
+突發,港聞,珍惜生命︱黃埔花園銀竹苑男子墮樓　當場不治,9568,黃埔花園,墮樓
+突發,港聞,警西九龍打擊白牌車　拘兩司機扣查兩私家車,8821,西九龍,執法行動
+突發,港聞,車cam｜干諾道西天降飛竹　險插中的士司機位　網民：隨時冇命！,8611,上環,墮物
+突發,港聞,有片｜獅隧公路同一位置40分鐘兩車禍涉6車　網民：煞車測試,8377,獅隧公路,交通意外
+突發,港聞,荔枝角收押所八旬翁遇襲昏迷送院亡　警列誤殺拘49歲內地囚友,7869,荔枝角,兇殺
+突發,港聞,深水埗澤安邨對開配水庫七人車遭縱火　據悉無車牌無底盤有助燃劑,7664,深水埗,火警
+突發,港聞,天平邨天明樓停電｜部份樓層料3日才復電　居民搬櫈出走廊乘涼,7598,上水,停電
+突發,港聞,觀塘康寧道茶飲店一日兩遭淋油　警列刑毀追緝歹徒,7486,觀塘,刑毀
+突發,港聞,鰂魚涌戰時炸彈｜現場解封道路重開　各部門助居民安全有序回家,7249,鰂魚涌,炸彈
+突發,港聞,鰂魚涌戰時炸彈︱街坊住社區會堂讚安排妥當　理解疏散：爆炸仲死,7202,鰂魚涌,炸彈
+突發,港聞,珍惜生命｜跑馬地樂活臺女子墮樓　當場不治,7043,跑馬地,跳樓
+突發,港聞,內地漢南丫島行山失蹤　3日後由駕帆船人士發現　平安獲救,6996,南丫島,失蹤
+突發,港聞,珍惜生命｜荃灣柴灣角街工廈男子墮樓　昏迷送院搶救後不治,6795,荃灣,墮樓
+突發,港聞,大坑西邨居民企跳割脈圖輕生　控業主逼簽退租協議　街坊及時制止,6784,石硤尾,跳樓
+突發,港聞,牛頭角樂華南邨43歲男住客暈倒家中　送院搶救後返魂乏術,6704,牛頭角,猝死
+突發,港聞,鰂魚涌戰時炸彈｜歷史學者尋炸彈來歷　1945年4月2日美轟炸機投彈,6673,鰂魚涌,炸彈
+突發,港聞,屯門鄉事會路兆麟站外　九巴與Tesla相撞　一地玻璃碎,6663,屯門,交通意外
+突發,港聞,天平邨天明樓停電｜管業處派飯及水　居民到商場避暑讚民政處安排,6625,粉嶺,停電
+突發,港聞,將軍澳中心男工疑遭飛墮石屎擊中　頭部浴血昏迷送院搶救,6566,將軍澳,工業意外
+突發,港聞,珍惜生命｜秀茂坪邨女住戶墮樓　當場不治,6451,秀茂坪邨,墮樓
+突發,港聞,紅磡渡輪碼頭驚現男浮屍　警調查墮海原因,6428,紅磡,墮海
+突發,港聞,消息：警國安處帶走侯中宇母親到警署助查,6333,灣仔,執法行動
+突發,港聞,內地漢南丫島行山失蹤2日　向同事稱迷路及手機無電　救援續進行,6259,南丫島,失蹤
+突發,港聞,七旬翁誤信「虛幣專家」用AI分析　投資以太幣慘被呃$2620萬,6256,None,詐騙
+突發,港聞,55歲休班男警涉超市圖偷$577凍肉及零食　停職及被控　周五提堂,6213,None,盜竊
+突發,港聞,採藥翁倒斃山坡｜兒子指父上山採藥止皮膚痕癢　疑撞樹跌倒失救死,5800,將軍澳,山野意外
+突發,港聞,紅磡黃金劫案｜37歲前合夥人主腦落網被暫控盜竊　累計14人被捕,5722,紅磡,劫案
+突發,港聞,文錦渡私家車猛撞中型貨車　女司機爆頭重創　當場死亡,5531,文錦渡,交通意外
+突發,港聞,海關破$1500萬網售冒牌貨案拉7人　檢熱賣野生蟲草　教市民辨真假,5240,None,執法行動
+突發,港聞,粉嶺電工觸電亡｜死者沒接電話始被揭暈倒　妻及2年幼子女失依靠,5214,粉嶺,觸電
+`;
+    // =================================================================================
+    // END OF DATA BLOCK
+    // =================================================================================
+
+    function parseCSV(csvText) {
+        const lines = csvText.trim().split('\n');
+        if (lines.length === 0) return [];
+        
+        const headers = lines[0].split(',').map(h => h.trim());
+        const data = [];
+
+        for (let i = 1; i < lines.length; i++) {
+            const values = lines[i].split(',');
+            const obj = {};
+            if (values.length === headers.length) {
+                headers.forEach((header, index) => {
+                    let value = values[index].trim();
+                    // Basic attempt to convert views to number, otherwise keep as string
+                    if (header === 'views') {
+                        obj[header] = parseInt(value, 10) || 0;
+                    } else {
+                        obj[header] = value;
+                    }
+                });
+                data.push(obj);
+            }
+        }
+        return data;
+    }
+
+    // Convert CSV data into an array of objects
+    const articlesData = parseCSV(csvData);
+
+    document.addEventListener('DOMContentLoaded', () => {
+        let locationChart, natureChart;
+        let currentSort = { key: 'views', direction: 'desc' };
+        let currentFilter = { type: null, value: null };
+
+        // --- Data Processing & Cleaning ---
+        
+        function aggregateData(data, key) {
+            const map = new Map();
+            data.forEach(d => {
+                const value = d[key];
+                const views = d.views;
+                
+                // Specific filtering based on the key
+                let isValid = views > 0;
+                
+                if (key === 'gemini_location') {
+                    // Filter: location must exist and not be "None"
+                    isValid = isValid && value && value !== 'None';
+                } else if (key === 'gemini_news_nature') {
+                    // Filter: nature must exist (not an empty string)
+                    isValid = isValid && value;
+                }
+                
+                if (isValid) {
+                     map.set(value, (map.get(value) || 0) + views);
+                }
+            });
+
+            return Array.from(map, ([name, views]) => ({ name, views }))
+                .sort((a, b) => b.views - a.views);
+        }
+        
+        // --- Initial Render ---
+        renderDashboard(articlesData);
+
+        function renderDashboard(data) {
+            // Aggregate data based on current filter for charts
+            // If a filter is active, filter the source data first for charts
+            let filteredData = [...data];
+            if (currentFilter.type && currentFilter.value) {
+                filteredData = data.filter(d => d[currentFilter.type] === currentFilter.value);
+            }
+
+            const locationData = aggregateData(filteredData, 'gemini_location');
+            const natureData = aggregateData(filteredData, 'gemini_news_nature');
+            
+            // Render Key Metrics (KPIs use all 100 data points regardless of location/nature validity)
+            const totalViews = data.reduce((sum, d) => sum + d.views, 0);
+            document.getElementById('total-views').textContent = totalViews.toLocaleString('en-US');
+            document.getElementById('top-location').textContent = locationData[0]?.name || 'N/A';
+            document.getElementById('top-nature').textContent = natureData[0]?.name || 'N/A';
+
+            // Render Charts
+            renderLocationChart(locationData);
+            renderNatureChart(natureData);
+            
+            // Render Table (uses all 100 data points, but filters based on selection)
+            renderTable(data);
+        }
+        
+        // --- Chart Rendering Functions ---
+        function renderLocationChart(data) {
+            const ctx = document.getElementById('locationChart').getContext('2d');
+            const top10Data = data.slice(0, 10);
+            
+            if (locationChart) {
+                locationChart.destroy();
+            }
+
+            locationChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: top10Data.map(d => d.name),
+                    datasets: [{
+                        label: '總瀏覽量',
+                        data: top10Data.map(d => d.views),
+                        backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                        borderColor: 'rgba(59, 130, 246, 1)',
+                        borderWidth: 1,
+                        hoverBackgroundColor: 'rgba(59, 130, 246, 1)'
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                             ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString('en-US');
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `瀏覽量: ${context.raw.toLocaleString('en-US')}`;
+                                }
+                            }
+                        }
+                    },
+                    onClick: (event, elements) => {
+                        if (elements.length > 0) {
+                            const index = elements[0].index;
+                            const location = top10Data[index].name;
+                            currentFilter = { type: 'gemini_location', value: location };
+                            renderDashboard(articlesData);
+                        }
+                    }
+                }
+            });
+        }
+        
+        function renderNatureChart(data) {
+            const ctx = document.getElementById('natureChart').getContext('2d');
+             if (natureChart) {
+                natureChart.destroy();
+            }
+            
+            const colors = [
+                'rgba(21, 128, 61, 0.7)', 'rgba(217, 119, 6, 0.7)', 'rgba(37, 99, 235, 0.7)', 'rgba(220, 38, 38, 0.7)', 
+                'rgba(107, 33, 168, 0.7)', 'rgba(2, 132, 199, 0.7)', 'rgba(217, 70, 239, 0.7)', 'rgba(100, 116, 139, 0.7)',
+                'rgba(251, 191, 36, 0.7)', 'rgba(16, 185, 129, 0.7)', 'rgba(251, 113, 133, 0.7)', 'rgba(99, 102, 241, 0.7)',
+                'rgba(200, 200, 200, 0.7)', 'rgba(50, 50, 50, 0.7)', 'rgba(150, 150, 150, 0.7)', 'rgba(25, 25, 25, 0.7)'
+            ];
+            const backgroundColors = data.map((d, i) => colors[i % colors.length]);
+
+            natureChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: data.map(d => d.name),
+                    datasets: [{
+                        label: '總瀏覽量',
+                        data: data.map(d => d.views),
+                        backgroundColor: backgroundColors,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                        },
+                         tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed !== null) {
+                                        label += context.raw.toLocaleString('en-US');
+                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                        const percentage = ((context.raw / total) * 100).toFixed(1) + '%';
+                                        label += ` (${percentage})`;
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    onClick: (event, elements) => {
+                        if (elements.length > 0) {
+                            const index = elements[0].index;
+                            const nature = data[index].name;
+                            currentFilter = { type: 'gemini_news_nature', value: nature };
+                            renderDashboard(articlesData);
+                        }
+                    }
+                }
+            });
+        }
+
+        // --- Table Rendering and Sorting ---
+        function renderTable(data) {
+            const tableBody = document.getElementById('articles-table-body');
+            tableBody.innerHTML = '';
+            
+            let displayData = [...data];
+
+            if (currentFilter.type && currentFilter.value) {
+                // Filter table data based on current chart click
+                displayData = data.filter(d => d[currentFilter.type] === currentFilter.value);
+            }
+            
+            const sortedData = [...displayData].sort((a, b) => {
+                const aValue = a[currentSort.key];
+                const bValue = b[currentSort.key];
+                
+                if (typeof aValue === 'number' && typeof bValue === 'number') {
+                    return currentSort.direction === 'asc' ? aValue - bValue : bValue - aValue;
+                }
+                
+                if (aValue < bValue) return currentSort.direction === 'asc' ? -1 : 1;
+                if (aValue > bValue) return currentSort.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            sortedData.forEach(article => {
+                const row = document.createElement('tr');
+                row.className = 'border-b hover:bg-gray-50';
+                row.innerHTML = `
+                    <td class="p-3">${article.title || '-'}</td>
+                    <td class="p-3">${article.gemini_location || '-'}</td>
+                    <td class="p-3">${article.gemini_news_nature || '-'}</td>
+                    <td class="p-3 text-right">${(article.views || 0).toLocaleString('en-US')}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+        
+        document.querySelectorAll('th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const key = th.dataset.sort;
+                if (currentSort.key === key) {
+                    currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+                } else {
+                    currentSort.key = key;
+                    currentSort.direction = 'desc';
+                }
+                renderTable(articlesData); // Re-render table with new sort direction
+            });
+        });
+
+        document.getElementById('reset-filter-btn').addEventListener('click', () => {
+            currentFilter = { type: null, value: null };
+            renderDashboard(articlesData);
+        });
+
+    });
+    </script>
+</body>
+</html>
